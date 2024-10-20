@@ -14,9 +14,10 @@ mod switch;
 #[allow(clippy::module_inception)]
 mod task;
 
-use crate::config::MAX_APP_NUM;
+use crate::config::{MAX_APP_NUM,MAX_SYSCALL_NUM};//add MAX_SYSCALL_NUM
 use crate::loader::{get_num_app, init_app_cx};
 use crate::sync::UPSafeCell;
+use crate::timer::get_time_ms;
 use lazy_static::*;
 use switch::__switch;
 pub use task::{TaskControlBlock, TaskStatus};
@@ -54,6 +55,8 @@ lazy_static! {
         let mut tasks = [TaskControlBlock {
             task_cx: TaskContext::zero_init(),
             task_status: TaskStatus::UnInit,
+            syscall_count:[0; MAX_SYSCALL_NUM],
+            start_time:get_time_ms(),
         }; MAX_APP_NUM];
         for (i, task) in tasks.iter_mut().enumerate() {
             task.task_cx = TaskContext::goto_restore(init_app_cx(i));
@@ -76,6 +79,19 @@ impl TaskManager {
     ///
     /// Generally, the first task in task list is an idle task (we call it zero process later).
     /// But in ch3, we load apps statically, so the first task is a real app.
+    fn increase_current_syscall_count(&self, syscall_id: usize) {
+        let mut inner = self.inner.exclusive_access();
+        let current = inner.current_task;
+        inner.tasks[current].syscall_count[syscall_id] += 1;
+    }
+    fn get_current_task_info(&self) -> (TaskStatus, [u32; MAX_SYSCALL_NUM], usize) {
+        let inner = self.inner.exclusive_access();
+        let current:usize = inner.current_task;
+        let task = &inner.tasks[current];//control block
+        let current_time = get_time_ms();
+        let time = current_time - task.start_time;
+        (task.task_status, task.syscall_count, time)
+    }
     fn run_first_task(&self) -> ! {
         let mut inner = self.inner.exclusive_access();
         let task0 = &mut inner.tasks[0];
@@ -168,4 +184,16 @@ pub fn suspend_current_and_run_next() {
 pub fn exit_current_and_run_next() {
     mark_current_exited();
     run_next_task();
+}
+/// increase_current_syscall_count
+pub fn increase_current_syscall_count(syscall_id: usize) {
+    if syscall_id >= MAX_SYSCALL_NUM {
+        return;
+    }
+    TASK_MANAGER.increase_current_syscall_count(syscall_id);
+}
+
+/// get_current_task_info
+pub fn get_current_task_info() -> (TaskStatus, [u32; MAX_SYSCALL_NUM], usize) {
+    TASK_MANAGER.get_current_task_info()
 }
