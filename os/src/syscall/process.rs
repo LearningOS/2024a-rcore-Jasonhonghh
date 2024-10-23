@@ -2,9 +2,12 @@
 use crate::{
     config::MAX_SYSCALL_NUM,
     task::{
-        change_program_brk, exit_current_and_run_next, suspend_current_and_run_next, TaskStatus,
+        get_current_task_info,current_user_token,change_program_brk, exit_current_and_run_next, suspend_current_and_run_next, TaskStatus,
     },
+    mm::translated_byte_buffer,
 };
+use core::mem::size_of;
+use crate::timer::get_time_us;
 
 #[repr(C)]
 #[derive(Debug)]
@@ -43,15 +46,43 @@ pub fn sys_yield() -> isize {
 /// HINT: What if [`TimeVal`] is splitted by two pages ?
 pub fn sys_get_time(_ts: *mut TimeVal, _tz: usize) -> isize {
     trace!("kernel: sys_get_time");
-    -1
+    let buffers =
+        translated_byte_buffer(current_user_token(), _ts as *const u8, size_of::<TimeVal>());
+    let us = get_time_us();
+    let time_val = TimeVal {
+        sec: us / 1_000_000,
+        usec: us % 1_000_000,
+    };
+    let mut time_val_ptr = &time_val as *const _ as *const u8;
+    for buffer in buffers {
+        unsafe {
+            time_val_ptr.copy_to(buffer.as_mut_ptr(), buffer.len());
+            time_val_ptr = time_val_ptr.add(buffer.len());
+        }
+    }
+    0
 }
 
 /// YOUR JOB: Finish sys_task_info to pass testcases
 /// HINT: You might reimplement it with virtual memory management.
 /// HINT: What if [`TaskInfo`] is splitted by two pages ?
 pub fn sys_task_info(_ti: *mut TaskInfo) -> isize {
-    trace!("kernel: sys_task_info NOT IMPLEMENTED YET!");
-    -1
+    trace!("kernel: sys_task_info");
+    let buffers = translated_byte_buffer(current_user_token(), _ti as *const u8, size_of::<TaskInfo>());
+    let task_info = get_current_task_info();
+    let task_info = TaskInfo {
+        status: task_info.0,
+        syscall_times: task_info.1,
+        time: task_info.2,
+    };
+    let mut task_info_ptr = &task_info as *const _ as *const u8;
+    for buffer in buffers {
+        unsafe {
+            task_info_ptr.copy_to(buffer.as_mut_ptr(), buffer.len());
+            task_info_ptr = task_info_ptr.add(buffer.len());
+        }
+    }
+    0
 }
 
 // YOUR JOB: Implement mmap.
