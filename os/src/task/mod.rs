@@ -14,6 +14,7 @@ mod switch;
 #[allow(clippy::module_inception)]
 mod task;
 
+use crate::mm::{MapPermission,VirtPageNum,PageTable,VirtAddr};
 use crate::loader::{get_app_data, get_num_app};
 use crate::sync::UPSafeCell;
 use crate::trap::TrapContext;
@@ -170,6 +171,29 @@ impl TaskManager {
         let current = inner.current_task;
         inner.tasks[current].syscall_count[syscall_id] += 1;
     }
+    ///task_mmap_area
+    fn task_mmap_area(&self,_start:usize,_len:usize,_permission:MapPermission)->isize{
+        let token = self.get_current_token();
+        let page_table = PageTable::from_token(token);
+        //虚拟页号
+        let start_vpn = _start / 4096;
+        let end_vpn = (_start + _len + 4095) / 4096;//最后一页的后一页的页号
+        for vpn in start_vpn..end_vpn {
+            let c_vpn:VirtPageNum = vpn.into();
+            if page_table.find_pte(c_vpn).is_some(){//如果已经映射了
+                return -1;
+            }
+        }
+        let mut inner = self.inner.exclusive_access();
+        let current = inner.current_task;
+        let task = &mut inner.tasks[current];
+        let memory_set = &mut task.memory_set;
+        //传入虚拟内存地址，之后调用的函数会自动转换为页号，向下向上取整
+        let start_va = VirtAddr::from(_start);
+        let end_va = VirtAddr::from(_start + _len-1);//注意这个地方是减一
+        memory_set.insert_framed_area(start_va,end_va, _permission);
+        0
+    }
 }
 
 /// Run the first task in task list.
@@ -229,4 +253,8 @@ pub fn increase_current_syscall_count(syscall_id: usize) {
         return;
     }
     TASK_MANAGER.increase_current_syscall_count(syscall_id);
+}
+///task_mmap_area
+pub fn task_mmap_area(_start:usize,_len:usize,permission:MapPermission)->isize{
+    TASK_MANAGER.task_mmap_area(_start,_len,permission)
 }

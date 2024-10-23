@@ -2,9 +2,9 @@
 use crate::{
     config::MAX_SYSCALL_NUM,
     task::{
-        get_current_task_info,current_user_token,change_program_brk, exit_current_and_run_next, suspend_current_and_run_next, TaskStatus,
+        task_mmap_area,get_current_task_info,current_user_token,change_program_brk, exit_current_and_run_next, suspend_current_and_run_next, TaskStatus,
     },
-    mm::translated_byte_buffer,
+    mm::{MapPermission,translated_byte_buffer},
 };
 use core::mem::size_of;
 use crate::timer::get_time_us;
@@ -86,9 +86,15 @@ pub fn sys_task_info(_ti: *mut TaskInfo) -> isize {
 }
 
 // YOUR JOB: Implement mmap.
-pub fn sys_mmap(_start: usize, _len: usize, _port: usize) -> isize {
-    trace!("kernel: sys_mmap NOT IMPLEMENTED YET!");
-    -1
+pub fn sys_mmap(_start: usize, _len: usize, _prot: usize) -> isize {
+    trace!("kernel: sys_mmap ");
+    if _start % 4096 != 0 { return -1; } //start没有对齐到页
+    if _prot & !0x7 != 0 { return -1; } //prot除最后3位外其余的位不为0
+    if _prot & 0x7 == 0 { return -1; } //prot的最后三位为0
+    // 物理空间不足，暂时不处理
+    let mut permission = MapPermission::from_bits((_prot as u8) << 1).unwrap();
+    permission.set(MapPermission::U, true); //把prot转换为permission
+    task_mmap_area(_start, _len, permission)
 }
 
 // YOUR JOB: Implement munmap.
