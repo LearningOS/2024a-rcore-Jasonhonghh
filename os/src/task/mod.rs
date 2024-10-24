@@ -190,9 +190,31 @@ impl TaskManager {
         let memory_set = &mut task.memory_set;
         //传入虚拟内存地址，之后调用的函数会自动转换为页号，向下向上取整
         let start_va = VirtAddr::from(_start);
-        let end_va = VirtAddr::from(_start + _len-1);//注意这个地方是减一
+        let end_va = VirtAddr::from(_start + _len);//注意这个地方是减一
         memory_set.insert_framed_area(start_va,end_va, _permission);
         0
+    }
+    fn task_munmap_area(&self,_start:usize,_len:usize)->isize{
+        let mut inner = self.inner.exclusive_access();
+        let current = inner.current_task;
+        let task = &mut inner.tasks[current];//控制块
+        let memory_set = &mut task.memory_set;//其areas字段私有，只能通过控制块访问,修改为pub
+        let mut area_id = 0;
+        let page_table =&mut memory_set.page_table;
+        for area in memory_set.areas.iter_mut(){
+            // println!("vpn_range start:{:?} end:{:?}",area.vpn_range.get_start().0,area.vpn_range.get_end().0);
+            // println!("start:{:?} end:{:?}",_start/4096,(_start+_len)/4096);
+            if area.vpn_range.get_start().0*4096 == _start && area.vpn_range.get_end().0*4096 == _start+_len{
+                // println!("find area");
+                area.unmap(page_table);
+                // println!("find area");
+                memory_set.areas.remove(area_id);
+                // println!("find area");
+                return 0;
+            }
+            area_id += 1;
+        }
+        -1
     }
 }
 
@@ -257,4 +279,8 @@ pub fn increase_current_syscall_count(syscall_id: usize) {
 ///task_mmap_area
 pub fn task_mmap_area(_start:usize,_len:usize,permission:MapPermission)->isize{
     TASK_MANAGER.task_mmap_area(_start,_len,permission)
+}
+///task_munmap_area
+pub fn task_munmap_area(_start:usize,_len:usize)->isize{
+    TASK_MANAGER.task_munmap_area(_start,_len)
 }
