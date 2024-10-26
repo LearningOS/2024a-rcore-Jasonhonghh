@@ -23,7 +23,23 @@ impl TaskManager {
     }
     /// Take a process out of the ready queue
     pub fn fetch(&mut self) -> Option<Arc<TaskControlBlock>> {
-        self.ready_queue.pop_front()
+        let mut result_task = self.ready_queue.pop_front().as_ref()?.clone();
+        let mut tmp_deque = VecDeque::new();
+        let mut i = self.ready_queue.pop_front();
+        while i.is_some() {
+            let i_task = i.as_ref()?.clone();
+            if i_task.inner_exclusive_access().task_stride >= result_task.inner_exclusive_access().task_stride {
+                tmp_deque.push_back(i.clone());
+            } else {
+                tmp_deque.push_back(Some(result_task.clone()));
+                result_task = i_task;
+            }
+            i = self.ready_queue.pop_front();
+        }
+        while!tmp_deque.is_empty() {
+            self.ready_queue.push_back(tmp_deque.pop_front().unwrap().unwrap());
+        }
+        Some(result_task)
     }
 }
 
