@@ -4,7 +4,7 @@
 //!
 //! `UPSafeCell<OSInodeInner>` -> `OSInode`: for static `ROOT_INODE`,we
 //! need to wrap `OSInodeInner` into `UPSafeCell`
-use super::File;
+use super::{File,Stat,StatMode};
 use crate::drivers::BLOCK_DEVICE;
 use crate::mm::UserBuffer;
 use crate::sync::UPSafeCell;
@@ -13,6 +13,7 @@ use alloc::vec::Vec;
 use bitflags::*;
 use easy_fs::{EasyFileSystem, Inode};
 use lazy_static::*;
+use easy_fs::layout::DiskInodeType;
 
 /// inode in memory
 /// A wrapper around a filesystem inode
@@ -69,7 +70,14 @@ pub fn list_apps() {
     }
     println!("**************/");
 }
-
+/// crate a Hard Link
+pub fn linkat(old_name:&str,new_name:&str)->isize{
+    ROOT_INODE.linkat(old_name,new_name)
+}
+/// remove a Hard Link
+pub fn unlinkat(name:&str)->isize{
+    ROOT_INODE.unlinkat(name)
+}
 bitflags! {
     ///  The flags argument to the open() system call is constructed by ORing together zero or more of the following values:
     pub struct OpenFlags: u32 {
@@ -154,5 +162,18 @@ impl File for OSInode {
             total_write_size += write_size;
         }
         total_write_size
+    }
+    fn stat(&self, st: &mut Stat) -> isize {
+        println!("stat");
+        let inner = self.inner.exclusive_access();
+        println!("stat1");
+        inner.inode.read_disk_inode(|disk_inode| {
+            st.mode = match disk_inode.type_ {
+                DiskInodeType::File => StatMode::FILE,
+                DiskInodeType::Directory => StatMode::DIR,
+            };
+            st.nlink = disk_inode.nlinks;
+        });
+        0
     }
 }

@@ -230,6 +230,13 @@ impl TaskControlBlock {
         // **** release child PCB
         // ---- release parent PCB
     }
+    
+    /// spawn a new process
+    pub fn spawn(self: &Arc<Self>, elf_data: &[u8]) -> Arc<Self> {
+        let new_task = self.fork();
+        new_task.exec(elf_data);
+        new_task
+    }
 
     /// get pid of process
     pub fn getpid(&self) -> usize {
