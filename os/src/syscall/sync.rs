@@ -251,7 +251,13 @@ pub fn sys_semaphore_down(sem_id: usize) -> isize {
                 let thread = process_inner.get_task(i);
                 let thead_inner = thread.inner_exclusive_access();
                 let mut need = thead_inner.need.clone();
-                need[sem_id]+=1;
+                if need.len()==4 {
+                    need[sem_id] += 1
+                }else {
+                    if tid == i{
+                        need[sem_id]+=1;
+                    }
+                }
                 drop(thead_inner);
                 let mut finish_flag = true;//假设所有任务都可以完成
                 println!("test tid:{} sem_id:{}",tid,sem_id);
